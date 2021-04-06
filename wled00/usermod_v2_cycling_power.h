@@ -138,11 +138,14 @@ inline void UsermodCyclingPower::onMqttMessage(
     }
     int average_power = (int)(sum_power / average_size);
 
-    // set current power as global variable to access from FX functions
-    current_power_global = average_power;
-    cycling_power_buffer[cycling_power_current_index] = average_power;
-    cycling_power_old_index = cycling_power_current_index;
-    cycling_power_current_index = (cycling_power_current_index + 1) % cycling_power_buffer_size;
+    if (!power_index)
+    {
+      // set current power as global variable to access from FX functions
+      current_power_global = average_power;
+      cycling_power_buffer[cycling_power_current_index] = average_power;
+      cycling_power_old_index = cycling_power_current_index;
+      cycling_power_current_index = (cycling_power_current_index + 1) % cycling_power_buffer_size;
+    }
 
   }
   else if (strcmp(topic, cycle_power_options_topic) == 0) 
