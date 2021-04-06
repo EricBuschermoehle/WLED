@@ -6,15 +6,13 @@
 
 #include "wled.h"
 
-enum PowerZones
-{
-    active_recovery,
-    endurance,
-    tempo,
-    threshold,
-    vo2_max,
-    neuromuscular,
-};
+int current_power_global = 0;
+int current_ftp_global = 0;
+
+extern const uint32_t cycling_power_buffer_size = 200;
+uint32_t cycling_power_current_index = 0;
+uint32_t cycling_power_old_index = 0;
+uint32_t cycling_power_buffer[cycling_power_buffer_size] = {0};
 
 class UsermodCyclingPower : public Usermod 
 {
@@ -23,27 +21,25 @@ class UsermodCyclingPower : public Usermod
 
     const char *cycle_power_topic = "smart_trainer/cycling_power";
     const char *cycle_power_options_topic = "smart_trainer/cycling_power_option";
-    int ftp_value = 313;
+    int ftp_value = 300;
 
     int average_size = 3;
     int power_history[3] = {0,0,0};
+
     int power_index = 0;
 
     void mqtt_init();
     void onMqttConnect(bool session_present);
-    void onMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total);
-
-    PowerZones get_power_zone(int ftp_value, int current_power);
+    void onMqttMessage(
+      char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total);
 
   public:
     void setup() 
     {
-      Serial.println("Hello from my usermod!");
     }
 
     void connected() 
     {
-      Serial.println("Connected to WiFi!");
     }
 
     void loop() 
@@ -112,26 +108,14 @@ inline void UsermodCyclingPower::mqtt_init()
 inline void UsermodCyclingPower::onMqttConnect(bool sessionPresent)
 {
   // connect to cycling topic
-  Serial.println("onMqttConnect!");
   mqtt->subscribe(cycle_power_topic, 0);
   mqtt->subscribe(cycle_power_options_topic, 0);
   return;
 }
 
-inline PowerZones UsermodCyclingPower::get_power_zone(int ftp_value, int current_power)
-{
 
-  if (current_power < (float)ftp_value * 0.6) return PowerZones::active_recovery;
-  else if (current_power < (float)ftp_value * 0.75) return PowerZones::endurance;
-  else if (current_power < (float)ftp_value * 0.89) return PowerZones::tempo;
-  else if (current_power < (float)ftp_value * 1.04) return PowerZones::threshold;
-  else if (current_power < (float)ftp_value * 1.18) return PowerZones::vo2_max;
-  else return PowerZones::neuromuscular;
-
-}
-
-
-inline void UsermodCyclingPower::onMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
+inline void UsermodCyclingPower::onMqttMessage(
+  char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
 {
   // copy and convert cycling power to inetger 
 
@@ -154,50 +138,12 @@ inline void UsermodCyclingPower::onMqttMessage(char *topic, char *payload, Async
     }
     int average_power = (int)(sum_power / average_size);
 
-    Serial.println("power_index");
-    Serial.println(power_index);
+    // set current power as global variable to access from FX functions
+    current_power_global = average_power;
+    cycling_power_buffer[cycling_power_current_index] = average_power;
+    cycling_power_old_index = cycling_power_current_index;
+    cycling_power_current_index = (cycling_power_current_index + 1) % cycling_power_buffer_size;
 
-    // caclulate the current power zone
-    PowerZones current_state = UsermodCyclingPower::get_power_zone(ftp_value, average_power);
-
-    switch(current_state)
-    {
-      case PowerZones::active_recovery:
-        col[0] = 255;
-        col[1] = 0;
-        col[2] = 255;
-        break;
-      case PowerZones::endurance:
-        col[0] = 0;
-        col[1] = 0;
-        col[2] = 255;
-        break;
-      case PowerZones::tempo:
-        col[0] = 0;
-        col[1] = 255;
-        col[2] = 0;
-        break;
-      case PowerZones::threshold:
-        col[0] = 255;
-        col[1] = 255;
-        col[2] = 0;
-        break;
-      case PowerZones::vo2_max:
-        col[0] = 255;
-        col[1] = 136;
-        col[2] = 0;
-        break;
-      case PowerZones::neuromuscular:
-        col[0] = 255;
-        col[1] = 0;
-        col[2] = 0;
-        break;
-    }
-    colorUpdated(NOTIFIER_CALL_MODE_NO_NOTIFY);
-
-    Serial.println(topic);
-    Serial.println(current_power);
-    Serial.println(current_state);
   }
   else if (strcmp(topic, cycle_power_options_topic) == 0) 
   {
@@ -206,6 +152,7 @@ inline void UsermodCyclingPower::onMqttMessage(char *topic, char *payload, Async
     strncpy(sub_str, payload, len);
 
     ftp_value = atoi(sub_str);
+    current_ftp_global = ftp_value;
   }
 }
 

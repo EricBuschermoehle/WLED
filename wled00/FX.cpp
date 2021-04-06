@@ -4066,3 +4066,132 @@ uint16_t WS2812FX::mode_aurora(void) {
   
   return FRAMETIME;
 }
+
+
+extern int current_power_global;
+extern int current_ftp_global;
+
+extern const uint32_t cycling_power_buffer_size;
+extern uint32_t cycling_power_current_index;
+extern uint32_t cycling_power_old_index;
+extern uint32_t cycling_power_buffer[];
+
+enum PowerZones
+{
+    active_recovery,
+    endurance,
+    tempo,
+    threshold,
+    vo2_max,
+    neuromuscular,
+};
+
+typedef struct CyclingPower 
+{
+  PowerZones power_zone = PowerZones::active_recovery;
+  uint32_t current_power = 0;
+  float intensity = 0.0;
+  uint32_t color = 0;
+};
+
+inline CyclingPower get_power_zone(int ftp_value, int current_power)
+{
+
+  CyclingPower power;
+  power.current_power = current_power;
+  if (current_power < (float)ftp_value * 0.6) 
+  {
+    power.power_zone = PowerZones::active_recovery;
+    power.intensity = current_power / ((float)ftp_value * 0.6);
+    power.color = PURPLE;
+  }
+  else if (current_power < (float)ftp_value * 0.75) 
+  {
+    power.power_zone = PowerZones::endurance;
+    power.intensity = (current_power - (float)ftp_value * 0.6) / ((float)ftp_value * 0.75 - (float)ftp_value * 0.6);
+    power.color = BLUE;
+  }
+  else if (current_power < (float)ftp_value * 0.89) 
+  {
+    power.power_zone = PowerZones::tempo;
+    power.intensity = (current_power - (float)ftp_value * 0.75) / ((float)ftp_value * 0.89 - (float)ftp_value * 0.75);
+    power.color = GREEN;
+  }
+  else if (current_power < (float)ftp_value * 1.04)
+  {
+    power.power_zone = PowerZones::threshold;
+    power.intensity = (current_power - (float)ftp_value * 0.89) / ((float)ftp_value * 1.04 - (float)ftp_value * 0.89);
+    power.color = YELLOW;
+  }
+  else if (current_power < (float)ftp_value * 1.18) 
+  {
+    power.power_zone = PowerZones::vo2_max;
+    power.intensity = (current_power - (float)ftp_value * 1.04) / ((float)ftp_value * 1.18 - (float)ftp_value * 1.04);
+    power.color = ORANGE;
+  }
+  else 
+  {
+    power.power_zone = PowerZones::neuromuscular;
+    power.intensity = (current_power - (float)ftp_value * 1.18) / (1000.0 - (float)ftp_value * 1.18);
+    power.color = RED;
+  }
+  return power;
+}
+
+inline unsigned modulo(int value, unsigned m) 
+{
+    int mod = value % (int)m;
+    if (mod < 0) {
+        mod += m;
+    }
+    return mod;
+}
+
+uint16_t WS2812FX::mode_custom_cycling_power_static(void) 
+{
+  // caclulate the current power zone
+  CyclingPower cycle_power = get_power_zone(current_ftp_global, current_power_global);
+  fill(cycle_power.color);
+  return FRAMETIME;
+}
+
+uint16_t WS2812FX::mode_custom_cycling_power_bar(void) 
+{
+  // caclulate the current power zone
+  CyclingPower cycle_power = get_power_zone(
+    current_ftp_global, current_power_global);
+
+  uint16_t led_end = cycle_power.intensity * SEGLEN;
+  for(uint16_t i = 0; i < led_end; i++) 
+  {
+    setPixelColor(i, cycle_power.color);
+  }
+
+  // deactivate other pixel
+  for(uint16_t i = led_end; i < SEGLEN; i++) 
+  {
+    setPixelColor(i, BLACK);
+  }
+
+  return FRAMETIME;
+}
+
+uint16_t WS2812FX::mode_custom_cycling_power_graph(void) 
+{
+
+  if (cycling_power_old_index != cycling_power_current_index)
+  {
+    // deactivate other pixel
+    for(int i = 0; i < SEGLEN; i++) 
+    {
+      // caclulate the current power zone
+      int power_value = cycling_power_buffer[modulo((int)cycling_power_current_index - i, cycling_power_buffer_size)];
+      CyclingPower cycle_power = get_power_zone(current_ftp_global, power_value);
+      
+      setPixelColor(i, cycle_power.color);
+      cycling_power_old_index = cycling_power_current_index;
+    }   
+  }
+
+  return FRAMETIME;
+}
