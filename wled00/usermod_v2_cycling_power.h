@@ -7,7 +7,7 @@
 #include "wled.h"
 
 int current_power_global = 0;
-int current_ftp_global = 0;
+int current_ftp_global = 300;
 
 extern const uint32_t cycling_power_buffer_size = 200;
 uint32_t cycling_power_current_index = 0;
@@ -21,6 +21,7 @@ class UsermodCyclingPower : public Usermod
 
     const char *cycle_power_topic = "smart_trainer/cycling_power";
     const char *cycle_power_options_topic = "smart_trainer/cycling_power_option";
+    const char *cycle_power_dev_connect_topic = "smart_trainer/cycling_power_dev_connect";
     int ftp_value = 300;
 
     int average_size = 3;
@@ -99,6 +100,7 @@ inline void UsermodCyclingPower::mqtt_init()
 
     mqtt->subscribe(cycle_power_topic, 0);
     mqtt->subscribe(cycle_power_options_topic, 0);
+    mqtt->subscribe(cycle_power_dev_connect_topic, 0);
 
     mqtt_cyling_initialized = true;
     }
@@ -110,6 +112,7 @@ inline void UsermodCyclingPower::onMqttConnect(bool sessionPresent)
   // connect to cycling topic
   mqtt->subscribe(cycle_power_topic, 0);
   mqtt->subscribe(cycle_power_options_topic, 0);
+  mqtt->subscribe(cycle_power_dev_connect_topic, 0);
   return;
 }
 
@@ -156,6 +159,11 @@ inline void UsermodCyclingPower::onMqttMessage(
 
     ftp_value = atoi(sub_str);
     current_ftp_global = ftp_value;
+  }
+  else if (strcmp(topic, cycle_power_dev_connect_topic) == 0) 
+  {
+    strip.setMode(0, FX_MODE_CYCLING_POWER_GRAPH);
+    strip.setBrightness(100);
   }
 }
 
